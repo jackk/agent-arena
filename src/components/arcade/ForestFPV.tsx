@@ -4,293 +4,155 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
 import { SnakeState } from "@/lib/game/snake-engine";
-import { OrbitControls, Sky, PerspectiveCamera } from "@react-three/drei";
 
-// --- Tree component - low poly, beautiful ---
+// FAST low-poly tree - no shadows, 5 sides
 function Tree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
-  const trunkHeight = (1.5 + Math.random() * 0.5) * scale;
-  const leafSize = (0.8 + Math.random() * 0.6) * scale;
-
+  const trunkH = (1.3 + Math.random() * 0.4) * scale;
+  const leaf = (0.7 + Math.random() * 0.5) * scale;
+  const green = Math.random() > 0.3 ? "#1a5c2a" : "#2d6a4f";
   return (
     <group position={position}>
-      {/* Trunk */}
-      <mesh position={[0, trunkHeight / 2, 0]} castShadow>
-        <cylinderGeometry args={[0.12 * scale, 0.18 * scale, trunkHeight, 6]} />
-        <meshStandardMaterial color="#3d2817" roughness={0.9} metalness={0.1} />
+      <mesh position={[0, trunkH / 2, 0]}>
+        <cylinderGeometry args={[0.1 * scale, 0.15 * scale, trunkH, 5]} />
+        <meshLambertMaterial color="#3d2817" />
       </mesh>
-      {/* Leaves - stacked cones for pine-like or blob for oak */}
-      <group position={[0, trunkHeight + 0.2, 0]}>
-        <mesh position={[0, 0.3, 0]} castShadow>
-          <coneGeometry args={[leafSize * 0.9, leafSize * 1.5, 7]} />
-          <meshStandardMaterial color={Math.random() > 0.3 ? "#1a5c2a" : "#2d6a4f"} roughness={0.8} emissive="#0a2a0a" emissiveIntensity={0.2} />
-        </mesh>
-        <mesh position={[0, -0.2, 0]}>
-          <coneGeometry args={[leafSize * 1.1, leafSize * 1.3, 7]} />
-          <meshStandardMaterial color="#194a2a" roughness={0.8} />
-        </mesh>
-      </group>
+      <mesh position={[0, trunkH + 0.25, 0]}>
+        <coneGeometry args={[leaf * 0.9, leaf * 1.4, 5]} />
+        <meshLambertMaterial color={green} />
+      </mesh>
     </group>
   );
 }
 
-function MushroomFood({ pos, type, offsetX, offsetZ }: { pos: { x: number; y: number }; type: string; offsetX: number; offsetZ: number }) {
-  const ref = useRef<THREE.Group>(null);
-  const worldX = pos.x + offsetX;
-  const worldZ = pos.y + offsetZ;
-
-  useFrame(({ clock }) => {
-    if (ref.current) {
-      ref.current.position.y = Math.sin(clock.getElapsedTime() * 2 + pos.x) * 0.1;
-      ref.current.rotation.y = clock.getElapsedTime() * 0.5;
-    }
-  });
-
+function Mushroom({ pos, type, offsetX, offsetZ }: { pos: { x: number; y: number }; type: string; offsetX: number; offsetZ: number }) {
   const isGem = type === 'gem';
   const capColor = isGem ? "#60a5fa" : type === 'power' ? "#e879f9" : "#facc15";
-  const stemColor = isGem ? "#1e3a8a" : "#fef3c7";
-
   return (
-    <group ref={ref} position={[worldX, 0.2, worldZ]}>
-      {/* Stem */}
-      <mesh position={[0, 0.15, 0]}>
-        <cylinderGeometry args={[0.08, 0.12, 0.3, 6]} />
-        <meshStandardMaterial color={stemColor} roughness={0.6} />
+    <group position={[pos.x + offsetX, 0.25, pos.y + offsetZ]}>
+      <mesh position={[0, 0.12, 0]}>
+        <cylinderGeometry args={[0.06, 0.09, 0.22, 5]} />
+        <meshLambertMaterial color="#fef3c7" />
       </mesh>
-      {/* Cap */}
-      <mesh position={[0, 0.4, 0]}>
-        <sphereGeometry args={[0.35, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
-        <meshStandardMaterial
-          color={capColor}
-          emissive={capColor}
-          emissiveIntensity={isGem ? 1.2 : 0.8}
-          roughness={0.3}
-          metalness={0.2}
-        />
+      <mesh position={[0, 0.35, 0]}>
+        <sphereGeometry args={[0.28, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <meshLambertMaterial color={capColor} emissive={capColor} emissiveIntensity={0.6} />
       </mesh>
-      {/* Glow */}
-      <pointLight color={capColor} intensity={1.5} distance={4} />
-      {/* Little spots on mushroom */}
-      {!isGem && (
-        <>
-          <mesh position={[0.15, 0.45, 0.1]}>
-            <sphereGeometry args={[0.05, 4, 4]} />
-            <meshStandardMaterial color="white" />
-          </mesh>
-          <mesh position={[-0.12, 0.48, -0.08]}>
-            <sphereGeometry args={[0.04, 4, 4]} />
-            <meshStandardMaterial color="white" />
-          </mesh>
-        </>
-      )}
     </group>
   );
 }
 
-function SnakeBody3D({ snake, offsetX, offsetZ, isFirstPerson }: { snake: any; offsetX: number; offsetZ: number; isFirstPerson: boolean }) {
-  // Don't render head for first-person human snake (it would block camera)
-  const segments = isFirstPerson && snake.id === 'human' ? snake.body.slice(1) : snake.body;
-
+function SnakeSeg({ pos, color, isHead }: { pos: [number, number, number]; color: string; isHead: boolean }) {
   return (
-    <>
-      {segments.map((p: any, idx: number) => {
-        const isHead = idx === 0 && !(isFirstPerson && snake.id === 'human');
-        const worldX = p.x + offsetX;
-        const worldZ = p.y + offsetZ;
-        const y = isHead ? 0.4 : 0.15;
-        const scale = isHead ? 0.5 : 0.35 - idx * 0.005;
-
-        return (
-          <group key={`${snake.id}-${idx}-${p.x}-${p.y}`} position={[worldX, y, worldZ]}>
-            <mesh castShadow>
-              <sphereGeometry args={[scale, 8, 8]} />
-              <meshStandardMaterial
-                color={snake.color}
-                emissive={snake.color}
-                emissiveIntensity={isHead ? 1 : 0.5}
-                roughness={0.4}
-              />
-            </mesh>
-            {isHead && (
-              <>
-                <mesh position={[0, 0.2, 0]}>
-                  <sphereGeometry args={[0.12, 6, 6]} />
-                  <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={2} />
-                </mesh>
-              </>
-            )}
-          </group>
-        );
-      })}
-    </>
+    <group position={pos}>
+      <mesh>
+        <sphereGeometry args={[isHead ? 0.42 : 0.28, 6, 6]} />
+        <meshLambertMaterial color={color} emissive={color} emissiveIntensity={isHead ? 0.9 : 0.4} />
+      </mesh>
+    </group>
   );
 }
 
-function ForestScene({ state, humanId = 'human' }: { state: SnakeState; humanId?: string }) {
+function ForestScene({ state }: { state: SnakeState }) {
   const { camera } = useThree();
-  const cameraLerpRef = useRef({ x: 0, y: 5, z: 10 });
-  const lookAtLerpRef = useRef({ x: 0, y: 0, z: 0 });
-
+  const camRef = useRef({ x: 0, y: 12, z: 12 });
+  const lookRef = useRef({ x: 0, y: 0, z: 0 });
   const offsetX = -state.config.width / 2 + 0.5;
   const offsetZ = -state.config.height / 2 + 0.5;
 
-  // Generate forest trees
+  // FAST: only 36 border trees + 12 scattered = 48 total, memo once
   const trees = useMemo(() => {
-    const result: { pos: [number, number, number]; scale: number }[] = [];
-    const boardW = state.config.width;
-    const boardH = state.config.height;
-
-    // Border forest - dense ring around board
-    for (let i = 0; i < 80; i++) {
-      const angle = (i / 80) * Math.PI * 2;
-      const radius = Math.max(boardW, boardH) / 2 + 3 + Math.random() * 8;
-      const x = Math.cos(angle) * radius + (Math.random() - 0.5) * 2;
-      const z = Math.sin(angle) * radius + (Math.random() - 0.5) * 2;
-      result.push({ pos: [x, 0, z], scale: 0.8 + Math.random() * 0.8 });
+    const res: { pos: [number, number, number]; scale: number }[] = [];
+    const W = state.config.width;
+    const H = state.config.height;
+    for (let i = 0; i < 36; i++) {
+      const angle = (i / 36) * Math.PI * 2;
+      const r = Math.max(W, H) / 2 + 2.5 + Math.random() * 4;
+      res.push({ pos: [Math.cos(angle) * r, 0, Math.sin(angle) * r], scale: 0.7 + Math.random() * 0.6 });
     }
-
-    // Scattered interior decorative trees (don't block gameplay, just visual outside grid but near)
-    for (let i = 0; i < 40; i++) {
-      const x = (Math.random() - 0.5) * (boardW + 12);
-      const z = (Math.random() - 0.5) * (boardH + 12);
-      // Skip if too close to center (where snakes spawn) for clarity
-      if (Math.abs(x) < boardW / 2 - 1 && Math.abs(z) < boardH / 2 - 1) {
-        if (Math.random() > 0.3) continue; // only 30% chance inside
-      }
-      result.push({ pos: [x, 0, z], scale: 0.5 + Math.random() * 0.6 });
+    for (let i = 0; i < 12; i++) {
+      res.push({
+        pos: [(Math.random() - 0.5) * (W + 10), 0, (Math.random() - 0.5) * (H + 10)],
+        scale: 0.5 + Math.random() * 0.5,
+      });
     }
-
-    return result;
+    return res;
   }, [state.config.width, state.config.height]);
 
-  // Fireflies
-  const fireflies = useMemo(() => {
-    return Array.from({ length: 20 }).map((_, i) => ({
-      id: i,
-      pos: [(Math.random() - 0.5) * 20, 1 + Math.random() * 3, (Math.random() - 0.5) * 20] as [number, number, number],
-      color: Math.random() > 0.5 ? "#fef08a" : "#a7f3d0",
-      speed: 0.5 + Math.random() * 1.5,
-    }));
-  }, []);
-
-  useFrame(({ clock }) => {
-    const humanSnake = state.snakes.find(s => s.id === humanId && s.alive) || state.snakes.find(s => s.alive);
-    if (!humanSnake) {
-      // No human alive, top-down view
-      cameraLerpRef.current.x = THREE.MathUtils.lerp(cameraLerpRef.current.x, 0, 0.05);
-      cameraLerpRef.current.y = THREE.MathUtils.lerp(cameraLerpRef.current.y, 18, 0.05);
-      cameraLerpRef.current.z = THREE.MathUtils.lerp(cameraLerpRef.current.z, 12, 0.05);
-      lookAtLerpRef.current.x = THREE.MathUtils.lerp(lookAtLerpRef.current.x, 0, 0.05);
-      lookAtLerpRef.current.y = THREE.MathUtils.lerp(lookAtLerpRef.current.y, 0, 0.05);
-      lookAtLerpRef.current.z = THREE.MathUtils.lerp(lookAtLerpRef.current.z, 0, 0.05);
+  useFrame(() => {
+    // Follow first alive snake (human preferred)
+    const human = state.snakes.find(s => s.id === 'human' && s.alive) || state.snakes.find(s => s.alive);
+    if (!human) {
+      // Top-down when dead
+      camRef.current.x = THREE.MathUtils.lerp(camRef.current.x, 0, 0.04);
+      camRef.current.y = THREE.MathUtils.lerp(camRef.current.y, 16, 0.04);
+      camRef.current.z = THREE.MathUtils.lerp(camRef.current.z, 10, 0.04);
+      lookRef.current.x = THREE.MathUtils.lerp(lookRef.current.x, 0, 0.04);
+      lookRef.current.z = THREE.MathUtils.lerp(lookRef.current.z, 0, 0.04);
     } else {
-      const head = humanSnake.body[0];
-      const headWorldX = head.x + offsetX;
-      const headWorldZ = head.y + offsetZ;
-
-      // Direction vector
-      let dirX = 0, dirZ = 0;
-      switch (humanSnake.dir) {
-        case 'up': dirZ = -1; break;
-        case 'down': dirZ = 1; break;
-        case 'left': dirX = -1; break;
-        case 'right': dirX = 1; break;
+      const head = human.body[0];
+      const hx = head.x + offsetX;
+      const hz = head.y + offsetZ;
+      let dx = 0, dz = 0;
+      switch (human.dir) {
+        case 'up': dz = -1; break;
+        case 'down': dz = 1; break;
+        case 'left': dx = -1; break;
+        case 'right': dx = 1; break;
       }
+      const tCamX = hx - dx * 1.5;
+      const tCamY = 1.6;
+      const tCamZ = hz - dz * 1.5;
+      const tLookX = hx + dx * 5;
+      const tLookZ = hz + dz * 5;
 
-      // First-person: camera slightly behind and above head, looking forward
-      const targetCamX = headWorldX - dirX * 1.2;
-      const targetCamY = 1.2;
-      const targetCamZ = headWorldZ - dirZ * 1.2;
-
-      const targetLookX = headWorldX + dirX * 4;
-      const targetLookY = 0.5;
-      const targetLookZ = headWorldZ + dirZ * 4;
-
-      cameraLerpRef.current.x = THREE.MathUtils.lerp(cameraLerpRef.current.x, targetCamX, 0.15);
-      cameraLerpRef.current.y = THREE.MathUtils.lerp(cameraLerpRef.current.y, targetCamY, 0.15);
-      cameraLerpRef.current.z = THREE.MathUtils.lerp(cameraLerpRef.current.z, targetCamZ, 0.15);
-
-      lookAtLerpRef.current.x = THREE.MathUtils.lerp(lookAtLerpRef.current.x, targetLookX, 0.15);
-      lookAtLerpRef.current.y = THREE.MathUtils.lerp(lookAtLerpRef.current.y, targetLookY, 0.15);
-      lookAtLerpRef.current.z = THREE.MathUtils.lerp(lookAtLerpRef.current.z, targetLookZ, 0.15);
+      camRef.current.x = THREE.MathUtils.lerp(camRef.current.x, tCamX, 0.12);
+      camRef.current.y = THREE.MathUtils.lerp(camRef.current.y, tCamY, 0.12);
+      camRef.current.z = THREE.MathUtils.lerp(camRef.current.z, tCamZ, 0.12);
+      lookRef.current.x = THREE.MathUtils.lerp(lookRef.current.x, tLookX, 0.12);
+      lookRef.current.z = THREE.MathUtils.lerp(lookRef.current.z, tLookZ, 0.12);
     }
-
-    camera.position.set(cameraLerpRef.current.x, cameraLerpRef.current.y, cameraLerpRef.current.z);
-    camera.lookAt(lookAtLerpRef.current.x, lookAtLerpRef.current.y, lookAtLerpRef.current.z);
+    camera.position.set(camRef.current.x, camRef.current.y, camRef.current.z);
+    camera.lookAt(lookRef.current.x, 0.3, lookRef.current.z);
   });
 
   return (
     <>
-      {/* Fog for forest depth */}
-      <fog attach="fog" args={['#0a1f0f', 8, 28]} />
+      <fog attach="fog" args={['#0a1f0f', 10, 32]} />
+      <ambientLight intensity={0.7} color="#a7f3d0" />
+      <directionalLight position={[6, 12, 4]} intensity={1} color="#fef08a" />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.4} color="#a7f3d0" />
-      <directionalLight
-        position={[8, 15, 6]}
-        intensity={1.2}
-        color="#fef08a"
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-camera-far={50}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
-      />
-      <pointLight position={[0, 3, 0]} intensity={0.6} color="#22c55e" distance={15} />
-
-      {/* Sky - sunset forest */}
-      <Sky
-        distance={450000}
-        sunPosition={[10, 15, -10]}
-        inclination={0.3}
-        azimuth={0.25}
-        turbidity={6}
-        rayleigh={1.5}
-        mieCoefficient={0.003}
-        mieDirectionalG={0.8}
-      />
-
-      {/* Ground - forest floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
+      {/* Ground */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]}>
         <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#0f3d1f" roughness={0.9} metalness={0.1} />
+        <meshLambertMaterial color="#0f3d1f" />
       </mesh>
-
-      {/* Grid clearing - lighter where snake moves */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]}>
         <planeGeometry args={[state.config.width + 0.5, state.config.height + 0.5]} />
-        <meshStandardMaterial color="#1a4a2a" roughness={0.8} emissive="#0a2a0a" emissiveIntensity={0.3} />
+        <meshLambertMaterial color="#1a4a2a" emissive="#0a2a0a" emissiveIntensity={0.2} />
       </mesh>
 
-      {/* Grid lines subtle */}
-      <gridHelper args={[state.config.width, state.config.width, "#14532d", "#14532d"]} position={[0, -0.47, 0]} />
-
-      {/* Trees */}
+      {/* Trees - fast, no shadows */}
       {trees.map((t, i) => (
-        <Tree key={`tree-${i}`} position={t.pos} scale={t.scale} />
+        <Tree key={i} position={t.pos} scale={t.scale} />
       ))}
 
-      {/* Snakes */}
+      {/* Snakes - only render up to 10 segments per snake for perf in FPV? No, render all but simple */}
       {state.snakes.map(snake =>
-        snake.alive ? <SnakeBody3D key={snake.id} snake={snake} offsetX={offsetX} offsetZ={offsetZ} isFirstPerson={true} /> : null
+        snake.alive
+          ? snake.body.slice(0, snake.id === 'human' ? 1 : 12).map((p, idx) => (
+              <SnakeSeg
+                key={`${snake.id}-${idx}`}
+                pos={[p.x + offsetX, idx === 0 ? 0.4 : 0.15, p.y + offsetZ]}
+                color={snake.color}
+                isHead={idx === 0}
+              />
+            ))
+          : null
       )}
 
-      {/* Foods as mushrooms */}
-      {state.foods.map(food => (
-        <MushroomFood key={food.id} pos={food.pos} type={food.type} offsetX={offsetX} offsetZ={offsetZ} />
-      ))}
-
-      {/* Fireflies */}
-      {fireflies.map(f => (
-        <group key={f.id} position={[f.pos[0], f.pos[1], f.pos[2]]}>
-          <mesh>
-            <sphereGeometry args={[0.05, 4, 4]} />
-            <meshStandardMaterial color={f.color} emissive={f.color} emissiveIntensity={2} transparent opacity={0.8} />
-          </mesh>
-          <pointLight color={f.color} intensity={0.5} distance={2} />
-        </group>
+      {/* Foods */}
+      {state.foods.map(f => (
+        <Mushroom key={f.id} pos={f.pos} type={f.type} offsetX={offsetX} offsetZ={offsetZ} />
       ))}
     </>
   );
@@ -298,26 +160,22 @@ function ForestScene({ state, humanId = 'human' }: { state: SnakeState; humanId?
 
 export default function ForestFPV({ state }: { state: SnakeState }) {
   return (
-    <div className="relative w-full h-full rounded-xl overflow-hidden bg-black border-2 border-emerald-800 shadow-[0_0_40px_rgba(16,185,129,0.2)]">
+    <div className="relative w-full h-full rounded-xl overflow-hidden bg-black border-2 border-emerald-800">
       <Canvas
-        shadows
-        dpr={[1, 1.5]}
-        gl={{ antialias: true, alpha: false }}
-        style={{ background: 'linear-gradient(to bottom, #1e3a2a 0%, #0a1f0f 100%)' }}
+        dpr={1}
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
+        camera={{ position: [0, 14, 10], fov: 60 }}
+        style={{ background: '#0a1f0f' }}
       >
         <ForestScene state={state} />
       </Canvas>
 
-      {/* Forest HUD */}
       <div className="pointer-events-none absolute top-2 left-2 right-2 flex justify-between text-[10px] font-mono">
-        <div className="px-2.5 py-1 rounded-full bg-black/70 border border-emerald-500/30 text-emerald-300 backdrop-blur">🌲 FOREST FPV • WASD TO SLITHER • EAT MUSHROOMS 🍄</div>
-        <div className="hidden sm:flex px-2.5 py-1 rounded-full bg-black/70 border border-yellow-500/30 text-yellow-300 backdrop-blur">FIRST PERSON • FOLLOW CAM • BEAUTIFUL FOREST</div>
+        <div className="px-2 py-1 rounded-full bg-black/70 border border-emerald-500/30 text-emerald-300">🌲 FOREST FPV • WASD • EAT 🍄</div>
+        <div className="hidden sm:flex px-2 py-1 rounded-full bg-black/70 border border-emerald-500/30 text-emerald-300">FAST MODE • 60 FPS</div>
       </div>
 
-      {/* Vignette */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_60%,rgba(0,0,0,0.7)_100%)]" />
-      {/* Subtle scanlines for arcade feel but forest */}
-      <div className="pointer-events-none absolute inset-0 opacity-[0.04] bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,white_3px,transparent_4px)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_65%,rgba(0,0,0,0.6)_100%)]" />
     </div>
   );
 }

@@ -22,23 +22,25 @@ export default function ArcadeControls({ isPlaying, isOver, onPlayPause, onStep,
   return (
     <div className="rounded-xl border border-zinc-800 bg-black p-2 flex flex-col gap-2">
       <div className="flex items-center gap-1.5">
-        <button
-          onClick={onPlayPause}
-          disabled={isOver}
-          className={`flex-1 h-8 rounded-full font-black tracking-widest text-[11px] border transition-all
+            <button
+              onClick={onPlayPause}
+              disabled={isOver}
+              className={`flex-1 h-8 rounded-full font-black tracking-widest text-[11px] border transition-all
             ${isPlaying ? 'bg-red-500 border-red-400 text-white' : 'bg-emerald-500 border-emerald-400 text-black'}
             ${isOver ? 'opacity-50' : 'hover:brightness-110 active:scale-95'}
           `}
-        >
-          {isOver ? 'GAME OVER' : isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
-        </button>
-        <button onClick={onStep} className="h-8 w-14 rounded-full bg-yellow-400 border border-yellow-300 text-black font-black text-[10px] hover:brightness-110 active:scale-95">STEP</button>
-        <button onClick={() => onReset()} className="h-8 w-14 rounded-full bg-zinc-800 border border-zinc-700 text-white font-bold text-[10px] hover:bg-zinc-700">RESET</button>
-        <div className="hidden sm:flex items-center gap-1.5 ml-1">
-          <span className="text-[9px] font-bold text-zinc-500">SPD</span>
-          <input type="range" min={50} max={800} value={800 - speed + 50} onChange={e => setSpeed(850 - Number(e.target.value))} className="w-16 accent-cyan-400 h-1" />
-        </div>
-      </div>
+            >
+              {isOver ? 'GAME OVER' : isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
+            </button>
+            <button onClick={onStep} className="h-8 w-14 rounded-full bg-yellow-400 border border-yellow-300 text-black font-black text-[10px] hover:brightness-110 active:scale-95">STEP</button>
+            <button onClick={() => onReset()} className="h-8 w-14 rounded-full bg-zinc-800 border border-zinc-700 text-white font-bold text-[10px] hover:bg-zinc-700">RESET</button>
+            <div className="hidden sm:flex items-center gap-1.5 ml-2">
+              <span className="text-[9px] font-bold text-zinc-500">FAST</span>
+              <input type="range" min={20} max={300} value={320 - speed} onChange={e => setSpeed(320 - Number(e.target.value))} className="w-20 accent-emerald-400 h-1" />
+              <span className="text-[9px] font-bold text-zinc-500">SLOW</span>
+              <span className="text-[9px] font-mono text-emerald-400 w-8">{speed}ms</span>
+            </div>
+          </div>
 
       {isHuman && (
         <div className="rounded-lg bg-zinc-900 border border-yellow-500/30 p-2 flex items-center gap-3">
