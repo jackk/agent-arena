@@ -20,35 +20,25 @@ export default function ArcadeGameBoard({ gameState, selectedAgentId, onSelectAg
   for (const r of resources) resourceByPos.set(GameEngine.posKey(r.pos), r);
 
   return (
-    <div className="relative">
-      {/* Cabinet frame */}
-      <div className="absolute -inset-4 rounded-[24px] bg-gradient-to-b from-zinc-800 to-black border-2 border-zinc-700 shadow-[0_0_0_4px_black,0_0_40px_rgba(0,255,255,0.2),inset_0_0_20px_rgba(0,0,0,0.8)] -z-10" />
-      <div className="absolute -inset-3 rounded-[20px] bg-gradient-to-b from-cyan-500/20 via-transparent to-fuchsia-500/20 blur-[1px] -z-10" />
+    <div className="relative w-full h-full">
+      {/* Screen - compact, no outer frame to save space */}
+      <div className="relative h-full rounded-xl overflow-hidden bg-black border-2 border-zinc-800 shadow-[0_0_30px_rgba(0,0,0,0.8),inset_0_0_20px_rgba(0,0,0,0.9)] flex flex-col">
+        <Scanlines opacity={0.08} />
 
-      {/* Screen */}
-      <div className="relative rounded-[16px] overflow-hidden bg-black border-[3px] border-zinc-900 shadow-[inset_0_0_40px_rgba(0,0,0,0.9),inset_0_0_0_1px_rgba(255,255,255,0.1)]">
-        <Scanlines opacity={0.12} />
-
-        {/* Top HUD inside screen */}
-        <div className="relative z-20 flex items-center justify-between px-3 py-2 bg-gradient-to-r from-black via-zinc-900 to-black border-b border-cyan-500/20">
-          <div className="flex items-center gap-3 text-[10px] font-mono">
-            <span className="text-cyan-400">TURN</span>
-            <span className="text-white font-bold text-xs">{gameState.turn}</span>
-            <span className="text-zinc-600">/</span>
-            <span className="text-zinc-400">{gameState.config.maxTurns}</span>
-          </div>
+        {/* Top HUD - tiny */}
+        <div className="relative z-20 shrink-0 flex items-center justify-between px-2.5 h-7 bg-zinc-950 border-b border-zinc-800">
           <div className="flex items-center gap-2 text-[10px] font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_#34d399]" />
-            <span className="text-emerald-400 tracking-widest">ARCADE • LIVE</span>
+            <span className="text-cyan-400 font-bold">TURN</span>
+            <span className="text-white font-black">{gameState.turn}</span>
+            <span className="text-zinc-600">/{gameState.config.maxTurns}</span>
+            <span className="ml-2 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
-          <div className="text-[10px] font-mono text-zinc-500">
-            SEED:{gameState.seed}
-          </div>
+          <div className="text-[9px] font-mono text-zinc-500">SEED {gameState.seed} • {gameState.resources.length} COINS</div>
         </div>
 
-        {/* Grid */}
+        {/* Grid - flex-1 fills */}
         <div
-          className="relative grid gap-[2px] p-2 bg-[#050505] z-20"
+          className="relative flex-1 grid gap-[1px] p-1.5 bg-[#050505] z-20 min-h-0"
           style={{ gridTemplateColumns: `repeat(${config.width}, minmax(0, 1fr))` }}
         >
           {Array.from({ length: config.height }).map((_, y) =>
@@ -123,20 +113,13 @@ export default function ArcadeGameBoard({ gameState, selectedAgentId, onSelectAg
         </div>
 
         {/* Scanline shimmer */}
-        <div className="pointer-events-none absolute inset-0 z-30 bg-gradient-to-b from-transparent via-cyan-400/5 to-transparent h-[20%] animate-[scan_3s_linear_infinite]" />
+        <div className="pointer-events-none absolute inset-0 z-30 bg-gradient-to-b from-transparent via-cyan-400/[0.03] to-transparent h-[20%] animate-[scan_3s_linear_infinite]" />
         <style>{`
           @keyframes scan {
             0% { transform: translateY(-100%); }
             100% { transform: translateY(600%); }
           }
         `}</style>
-      </div>
-
-      {/* Bottom speaker grilles */}
-      <div className="mt-3 flex justify-center gap-1">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="w-1 h-8 rounded-full bg-zinc-800 border border-zinc-700" />
-        ))}
       </div>
     </div>
   );
