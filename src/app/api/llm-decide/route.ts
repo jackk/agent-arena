@@ -40,10 +40,28 @@ function getApiKey(): string | null {
   return null;
 }
 
-function buildPrompt(req: LLMRequest): { system: string; user: string } {
+function buildPrompt(req: any): { system: string; user: string } {
   const { turn, width, height, self, resources, enemies, customSystemPrompt } = req;
 
-  const baseSystem = `You are an elite AI strategist for Agent Arena, a 12x12 turn-based battle arena.
+  const isSnake = !!(self && (self as any).length !== undefined || (self as any).body || (self as any).dir);
+
+  const baseSystem = isSnake
+    ? `You are an elite AI for Classic Snake Arena - 3D Vector Edition.
+
+Rules:
+- Grid ${width}x${height}, turn ${turn}/300, simultaneous moves.
+- You are a snake: body is array of positions head-first, dir is current direction.
+- Cannot reverse 180° (no up->down immediate).
+- Food: coin=10pts, gem=25pts, power=50pts. Eat to grow +1 length + score.
+- Collision: Hit wall or any snake body (including own tail except moving tail) = death.
+- Head-on collision with same cell = all die.
+- Goal: Be last alive or highest score/length. Survive, eat, trap enemies.
+- Output MUST be valid JSON only, no markdown.
+
+Directions: up (y-1), down (y+1), left (x-1), right (x+1). No stay in snake.
+
+Return JSON: {"direction":"up|down|left|right","reason":"<10 words","confidence":0-1}`
+    : `You are an elite AI strategist for Agent Arena, a 12x12 turn-based battle arena.
 
 Rules:
 - Grid ${width}x${height}, turn ${turn}/100. Simultaneous moves, collisions block movement.
@@ -60,17 +78,36 @@ Return JSON: {"direction":"up|down|left|right|stay","reason":"<10 words","confid
 
   const system = customSystemPrompt ? `${baseSystem}\n\nUser custom strategy: ${customSystemPrompt}` : baseSystem;
 
-  const resLines = resources
+  const resLines = (resources || [])
     .slice(0, 8)
-    .map(r => `- (${r.pos.x},${r.pos.y}) ${r.type}=${r.value} dist=${r.dist}`)
+    .map((r: any) => `- (${r.pos.x},${r.pos.y}) ${r.type}=${r.value} dist=${r.dist ?? '?'}`)
     .join('\n');
 
-  const enemyLines = enemies
-    .slice(0, 5)
-    .map(e => `- ${e.name} at (${e.pos.x},${e.pos.y}) hp=${e.health} score=${e.score} dist=${e.dist}`)
+  const enemyLines = (enemies || [])
+    .slice(0, 6)
+    .map((e: any) => {
+      if (isSnake) {
+        return `- ${e.name || e.id} head at (${e.pos?.x ?? e.head?.x},${e.pos?.y ?? e.head?.y}) len=${e.length ?? '?'} dist=${e.dist}`;
+      } else {
+        return `- ${e.name} at (${e.pos.x},${e.pos.y}) hp=${e.health} score=${e.score} dist=${e.dist}`;
+      }
+    })
     .join('\n');
 
-  const user = `Turn ${turn}. You are at (${self.pos.x},${self.pos.y}) health=${self.health} score=${self.score}.
+  let user: string;
+  if (isSnake) {
+    const bodyStr = (self as any).body ? (self as any).body.slice(0,4).map((p: any)=>`(${p.x},${p.y})`).join('->') : `${self.pos.x},${self.pos.y}`;
+    user = `Turn ${turn}. You are ${self.id || 'snake'} at head (${self.pos.x},${self.pos.y}) dir=${(self as any).dir} len=${(self as any).length ?? '?'} score=${(self as any).score ?? self.score} body=${bodyStr}
+
+Food nearby:
+${resLines || 'None'}
+
+Enemy snakes:
+${enemyLines || 'None'}
+
+Choose best direction (cannot reverse 180). JSON only.`;
+  } else {
+    user = `Turn ${turn}. You are at (${self.pos.x},${self.pos.y}) health=${self.health} score=${self.score}.
 
 Nearby resources (sorted by dist):
 ${resLines || 'None'}
@@ -81,6 +118,7 @@ ${enemyLines || 'None'}
 Closest threat distance: ${enemies[0]?.dist ?? 'none'}.
 
 Choose best direction now. JSON only.`;
+  }
 
   return { system, user };
 }

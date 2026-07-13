@@ -6,27 +6,27 @@ export default function Tutorial({ onClose }: { onClose: () => void }) {
 
   const steps = [
     {
-      title: "Welcome to AGENT ARENA 🕹️",
-      desc: "6 AI gladiators fight on a 12x12 grid for coins. Watch them, play as one, or pit LLMs against each other.",
-      visual: "🏟️⚔️💰",
+      title: "Welcome to SNAKE ARENA 3D 🐍",
+      desc: "Classic Snake you know - now with 6 AIs battling, 3D vector wireframe graphics, and LLM vs LLM mode. Eat food, grow longer, don't crash!",
+      visual: "🐍💰💎",
       cta: "HOW TO PLAY →"
     },
     {
       title: "1. PICK YOUR MODE",
-      desc: "ARENA = watch 6 bots battle. 1P VS BOTS = you play as 😎 YOU with WASD. VERSUS = pick 2 fighters for 1v1. LLM BATTLE = configure 2 different AIs with your own API key.",
+      desc: "ARENA = watch 6 snakes battle. PLAY = you are 😎 yellow snake with WASD. VERSUS = pick 2 for 1v1. LLM BATTLE = 2 different AIs with your own API keys battle — configure in 🔑 panel.",
       visual: "🎮",
       cta: "GOT IT →"
     },
     {
-      title: "2. COLLECT & FIGHT",
-      desc: "💰 Coin =10pts, 💎 Gem=25pts, ⚡ Power=50pts + heals 30HP. Bump into enemy = both take 20-30 damage. Kill = +50pts. Last alive or highest score wins!",
-      visual: "💰💎⚡❤️⚔️",
+      title: "2. CLASSIC SNAKE RULES",
+      desc: "💰=10pts, 💎=25pts. Eat to grow +1 length. Hit wall or any snake body = death. Head-on = both die. Last alive or longest snake wins! 3D view = drag to rotate, scroll to zoom.",
+      visual: "🐍💥🏆",
       cta: "CLEAR →"
     },
     {
-      title: "3. ADD YOUR LLM KEY (optional)",
-      desc: "Click 🔑 API KEYS top-right, paste your Meta API key (LLM|...). This lets ✨ MuseSpark use real reasoning (2728 tokens avg per move) instead of heuristic. You can set different models/prompts for Player 1 vs Player 2 and watch them battle!",
-      visual: "🔑✨🧠",
+      title: "3. 3D VECTOR + LLM BATTLES",
+      desc: "Toggle 2D Classic / 3D Vector top-right. 3D = wireframe Tron style with emissive snakes and rotating food gems. Click 🔑 API KEYS, paste Meta key LLM|... to enable real LLM reasoning (2728 tokens/move) — set different models/prompts for epic LLM vs LLM battles!",
+      visual: "🔑✨🎮",
       cta: "LET'S PLAY!"
     },
   ];
