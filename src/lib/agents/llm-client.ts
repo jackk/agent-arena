@@ -37,9 +37,45 @@ function getNearbyEnemies(state: GameState, selfId: string, from: Position) {
     .sort((a, b) => a.dist - b.dist);
 }
 
-export async function fetchLLMDirection(state: GameState, agentId: string): Promise<LLMResponse> {
+export type LLMConfig = {
+  apiKey?: string;
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  customSystemPrompt?: string;
+};
+
+function loadUserConfig(): LLMConfig {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('agent-arena-llm-config');
+    if (!raw) {
+      // fallback legacy single key
+      const legacyKey = localStorage.getItem('agent-arena-api-key');
+      if (legacyKey) return { apiKey: legacyKey };
+      return {};
+    }
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function loadAgentSpecificConfig(agentId: string): LLMConfig {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(`agent-arena-agent-${agentId}`);
+    if (!raw) return loadUserConfig();
+    return JSON.parse(raw);
+  } catch {
+    return loadUserConfig();
+  }
+}
+
+export async function fetchLLMDirection(state: GameState, agentId: string, overrideConfig?: LLMConfig): Promise<LLMResponse> {
   const agent = state.agents.find(a => a.id === agentId);
   if (!agent) return { direction: 'stay', reason: 'agent not found' };
+
+  const userConfig = overrideConfig || loadAgentSpecificConfig(agentId);
 
   const payload = {
     turn: state.turn,
@@ -54,6 +90,10 @@ export async function fetchLLMDirection(state: GameState, agentId: string): Prom
     resources: getNearbyResources(state, agent.pos).slice(0, 8),
     enemies: getNearbyEnemies(state, agentId, agent.pos).slice(0, 5),
     seed: state.seed,
+    apiKey: userConfig.apiKey,
+    model: userConfig.model,
+    reasoningEffort: userConfig.reasoningEffort,
+    customSystemPrompt: userConfig.customSystemPrompt,
   };
 
   try {

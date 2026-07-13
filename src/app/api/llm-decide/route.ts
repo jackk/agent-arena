@@ -12,6 +12,11 @@ type LLMRequest = {
   resources: Array<{ pos: Position; value: number; type: string; dist: number }>;
   enemies: Array<{ id: string; name: string; pos: Position; health: number; score: number; dist: number }>;
   seed?: number;
+  // User-provided overrides for arcade BYOK
+  apiKey?: string;
+  model?: string; // e.g. muse-spark-1.1, muse-spark-20260615
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  customSystemPrompt?: string;
 };
 
 function getApiKey(): string | null {
@@ -36,9 +41,9 @@ function getApiKey(): string | null {
 }
 
 function buildPrompt(req: LLMRequest): { system: string; user: string } {
-  const { turn, width, height, self, resources, enemies } = req;
+  const { turn, width, height, self, resources, enemies, customSystemPrompt } = req;
 
-  const system = `You are an elite AI strategist for Agent Arena, a 12x12 turn-based battle arena.
+  const baseSystem = `You are an elite AI strategist for Agent Arena, a 12x12 turn-based battle arena.
 
 Rules:
 - Grid ${width}x${height}, turn ${turn}/100. Simultaneous moves, collisions block movement.
@@ -52,6 +57,8 @@ You must reason about positioning, resource value/distance, enemy threat, health
 Directions: up (y-1), down (y+1), left (x-1), right (x+1), stay.
 
 Return JSON: {"direction":"up|down|left|right|stay","reason":"<10 words","confidence":0-1}`;
+
+  const system = customSystemPrompt ? `${baseSystem}\n\nUser custom strategy: ${customSystemPrompt}` : baseSystem;
 
   const resLines = resources
     .slice(0, 8)
@@ -82,11 +89,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as LLMRequest;
 
-    const apiKey = getApiKey();
+    // Allow user BYOK via body.apiKey, else fallback to server key
+    const apiKey = (body.apiKey?.trim() || getApiKey()) as string | null;
+    const model = body.model || 'muse-spark-1.1';
+    const reasoningEffort = body.reasoningEffort || 'high';
+
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'META_API_KEY not found', fallback: 'stay' },
-        { status: 500 }
+        { error: 'META_API_KEY not found - add your key in arcade panel', fallback: 'stay', needKey: true },
+        { status: 200 } // return 200 with needKey flag so client can prompt
       );
     }
 
@@ -100,13 +111,13 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'muse-spark-1.1',
+        model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
         ],
         max_tokens: 4096,
-        reasoning_effort: 'high',
+        reasoning_effort: reasoningEffort,
       }),
     });
 

@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { GameEngine, DEFAULT_CONFIG, AGENT_PRESETS, AGENT_PRESETS_NO_LLM } from "./engine";
+import { GameEngine, DEFAULT_CONFIG, AGENT_PRESETS, AGENT_PRESETS_NO_LLM, HUMAN_PRESET, HUMAN_VS_BOTS_PRESETS, VERSUS_PRESETS } from "./engine";
 import { GameState, Direction, AgentConfig } from "./types";
 import { LeaderboardEntry } from "@/components/Leaderboard";
-import { ALL_STRATEGIES } from "../agents/strategies";
+import { ALL_STRATEGIES, getStrategyById } from "../agents/strategies";
 import { fetchLLMDirection } from "../agents/llm-client";
 
 type BatchProgress = {
   completed: number;
   total: number;
 };
+
+export type GameMode = 'arena' | 'human' | 'versus' | 'llmBattle';
 
 export function useGame() {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -25,7 +27,12 @@ export function useGame() {
   const [isLLMThinking, setIsLLMThinking] = useState(false);
   const [lastLLMReason, setLastLLMReason] = useState<string>("");
   const [useLLM, setUseLLM] = useState(true);
-  const [llmEnabled, setLlmEnabled] = useState(true); // whether a6 is included
+  const [llmEnabled, setLlmEnabled] = useState(true);
+  const [gameMode, setGameMode] = useState<GameMode>('arena');
+  const [versusPair, setVersusPair] = useState<[string, string]>(['a4', 'a6']);
+  const [humanDir, setHumanDirState] = useState<Direction>('stay');
+  const humanDirRef = useRef<Direction>('stay');
+  const [lastHumanInput, setLastHumanInput] = useState<number>(0);
 
   const engineRef = useRef<GameEngine | null>(null);
   const playRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,7 +42,7 @@ export function useGame() {
     for (const strat of ALL_STRATEGIES) {
       map.set(strat.id, strat.decide);
     }
-    for (const preset of AGENT_PRESETS) {
+    for (const preset of [...AGENT_PRESETS, HUMAN_PRESET]) {
       if (!map.has(preset.id)) {
         map.set(preset.id, () => {
           const dirs: Direction[] = ['up','down','left','right','stay'];
@@ -46,13 +53,28 @@ export function useGame() {
     return map;
   }, []);
 
-  const initGame = useCallback((seed?: number, customPresets?: AgentConfig[]) => {
+  const getPresetsForMode = useCallback((mode: GameMode, pair?: [string,string]): AgentConfig[] => {
+    switch(mode) {
+      case 'human':
+        return HUMAN_VS_BOTS_PRESETS;
+      case 'versus':
+        return VERSUS_PRESETS(pair?.[0] || versusPair[0], pair?.[1] || versusPair[1]);
+      case 'llmBattle':
+        // 1v1 LLM battle - two copies of MuseSpark with different IDs? Use a4 vs a6 as proxy, but allow custom
+        return VERSUS_PRESETS('a4', 'a6');
+      case 'arena':
+      default:
+        return llmEnabled ? AGENT_PRESETS : AGENT_PRESETS_NO_LLM;
+    }
+  }, [llmEnabled, versusPair]);
+
+  const initGame = useCallback((seed?: number, customPresets?: AgentConfig[], mode?: GameMode) => {
+    const actualMode = mode ?? gameMode;
     const s = seed ?? Math.floor(Math.random() * 1_000_000);
     const engine = new GameEngine(s);
     engineRef.current = engine;
-    let presets = customPresets ?? (llmEnabled ? AGENT_PRESETS : AGENT_PRESETS_NO_LLM);
-    // if llmEnabled false, ensure a6 not included
-    if (!llmEnabled) {
+    let presets = customPresets ?? getPresetsForMode(actualMode);
+    if (actualMode === 'arena' && !llmEnabled) {
       presets = presets.filter(p => p.id !== 'a6');
     }
     const initial = engine.createInitialState(presets, DEFAULT_CONFIG);
@@ -61,35 +83,39 @@ export function useGame() {
     setIsPlaying(false);
     setSelectedAgentId(undefined);
     setIsLLMThinking(false);
+    humanDirRef.current = 'stay';
+    setHumanDirState('stay');
     if (playRef.current) {
       clearTimeout(playRef.current);
       playRef.current = null;
     }
     return initial;
-  }, [llmEnabled]);
+  }, [llmEnabled, gameMode, getPresetsForMode]);
 
-  // Async action resolver that handles LLM
+  const setHumanDir = useCallback((dir: Direction) => {
+    humanDirRef.current = dir;
+    setHumanDirState(dir);
+    setLastHumanInput(Date.now());
+  }, []);
+
+  // Async action resolver that handles LLM + Human
   const getActions = useCallback(async (state: GameState): Promise<{ agentId: string; dir: Direction }[]> => {
     const stratMap = getStrategyMap();
     const alive = state.agents.filter(a => a.alive);
-
     const actions: { agentId: string; dir: Direction }[] = [];
-
-    // Check if LLM agent needs to think
     const hasLLM = alive.some(a => a.id === 'a6') && useLLM && llmEnabled;
 
-    if (hasLLM) {
-      setIsLLMThinking(true);
-    }
+    if (hasLLM) setIsLLMThinking(true);
 
     for (const agent of alive) {
-      if (agent.id === 'a6' && useLLM && llmEnabled) {
+      if (agent.id === 'human') {
+        actions.push({ agentId: agent.id, dir: humanDirRef.current });
+      } else if (agent.id === 'a6' && useLLM && llmEnabled) {
         try {
           const llmRes = await fetchLLMDirection(state, agent.id);
           setLastLLMReason(`${llmRes.reason} (${llmRes.latencyMs ? Math.round(llmRes.latencyMs/1000*10)/10 + 's' : ''})`);
           actions.push({ agentId: agent.id, dir: llmRes.direction });
         } catch {
-          // fallback to sync strategy
           const fn = stratMap.get(agent.id);
           let dir: Direction = 'stay';
           try { dir = fn ? fn(state, agent.id) : 'stay'; } catch { dir = 'stay'; }
@@ -103,10 +129,7 @@ export function useGame() {
       }
     }
 
-    if (hasLLM) {
-      setIsLLMThinking(false);
-    }
-
+    if (hasLLM) setIsLLMThinking(false);
     return actions;
   }, [getStrategyMap, useLLM, llmEnabled]);
 
@@ -115,7 +138,6 @@ export function useGame() {
     if (gameState.isOver) return;
     const engine = engineRef.current;
     if (!engine) return;
-
     const actions = await getActions(gameState);
     setGameState(prev => {
       if (!prev || prev.isOver) return prev;
@@ -141,12 +163,62 @@ export function useGame() {
     else play();
   }, [isPlaying, pause, play]);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((mode?: GameMode) => {
     pause();
-    initGame();
+    initGame(undefined, undefined, mode);
   }, [initGame, pause]);
 
-  // Async game loop with LLM support
+  const switchMode = useCallback((mode: GameMode, pair?: [string,string]) => {
+    setGameMode(mode);
+    if (pair) setVersusPair(pair);
+    setTimeout(() => {
+      initGame(undefined, pair ? VERSUS_PRESETS(pair[0], pair[1]) : undefined, mode);
+    }, 50);
+  }, [initGame]);
+
+  // Human keyboard controls
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't interfere when typing in inputs
+      const target = e.target as HTMLElement;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+
+      let dir: Direction | null = null;
+      switch(e.key) {
+        case 'ArrowUp': case 'w': case 'W': dir = 'up'; break;
+        case 'ArrowDown': case 's': case 'S': dir = 'down'; break;
+        case 'ArrowLeft': case 'a': case 'A': dir = 'left'; break;
+        case 'ArrowRight': case 'd': case 'D': dir = 'right'; break;
+        case ' ': dir = 'stay'; break;
+        case 'Space': 
+          if (gameMode === 'human') {
+            e.preventDefault();
+            setHumanDir('stay');
+            return;
+          }
+          break;
+      }
+      if (dir && gameMode === 'human') {
+        e.preventDefault();
+        setHumanDir(dir);
+      } else if (e.code === "Space" && gameMode !== 'human') {
+        e.preventDefault();
+        playPause();
+      } else if (e.key === "n" || e.key === "N") {
+        if (!isPlaying) step();
+      } else if (e.key === "r" || e.key === "R") {
+        if (gameMode !== 'human') reset();
+        else {
+          // reset human mode
+          initGame(undefined, undefined, 'human');
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [playPause, step, reset, isPlaying, gameMode, setHumanDir, initGame]);
+
+  // Game loop
   useEffect(() => {
     if (!isPlaying || !gameState) {
       if (playRef.current) {
@@ -155,37 +227,19 @@ export function useGame() {
       }
       return;
     }
-
     if (gameState.isOver) {
       setIsPlaying(false);
       return;
     }
 
     const loop = async () => {
-      // Don't start new loop if already thinking or paused
       if (!engineRef.current) return;
-
-      setGameState(prev => {
-        if (!prev) return prev;
-        if (prev.isOver) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev;
-      });
-
-      // Get current state snapshot for action generation
-      // We use functional update to avoid stale closure, but need to await actions
-      // So we read from ref? Simpler: use gameState from closure and next tick will be fresh
       const current = gameState;
-
       if (!current || current.isOver) {
         setIsPlaying(false);
         return;
       }
-
       const actions = await getActions(current);
-
       setGameState(prev => {
         if (!prev) return prev;
         if (prev.isOver) {
@@ -197,28 +251,16 @@ export function useGame() {
         if (next.isOver) {
           setIsPlaying(false);
         } else {
-          // schedule next tick after speed ms (or longer if LLM was used)
           const hasLLM = actions.some(a => a.agentId === 'a6');
-          const delay = hasLLM && useLLM ? Math.max(speed, 500) : speed;
+          const delay = hasLLM && useLLM ? Math.max(speed, 600) : speed;
           playRef.current = setTimeout(loop, delay);
         }
         return next;
       });
-
-      // If not over and no LLM delay already scheduled inside setGameState, schedule
-      // The above schedules inside setGameState closure - but to be safe, if not over, ensure loop continues
-      // We handle scheduling inside setGameState now, but also have fallback:
-      setTimeout(() => {
-        if (!isPlaying) return;
-        // check if playRef already set - if not, schedule
-        // This logic is handled above
-      }, 0);
     };
 
-    // Start loop with timeout to allow UI to update
     const hasLLMNow = gameState.agents.some(a => a.alive && a.id === 'a6') && useLLM;
-    const initialDelay = isLLMThinking ? 100 : speed;
-    playRef.current = setTimeout(loop, hasLLMNow ? 100 : initialDelay);
+    playRef.current = setTimeout(loop, hasLLMNow ? 100 : speed);
 
     return () => {
       if (playRef.current) {
@@ -226,12 +268,13 @@ export function useGame() {
         playRef.current = null;
       }
     };
-  }, [isPlaying, speed, gameState, getActions, useLLM, isLLMThinking]);
+  }, [isPlaying, speed, gameState, getActions, useLLM]);
 
-  // Alternative simpler interval for non-LLM mode: if useLLM false, use interval for speed
+  // Non-LLM fast loop fallback
   useEffect(() => {
-    if (useLLM) return; // LLM mode uses async loop above
+    if (useLLM) return;
     if (!isPlaying) return;
+    if (gameMode === 'human') return; // human uses main loop
 
     const stratMap = getStrategyMap();
     playRef.current = setTimeout(function tick() {
@@ -244,6 +287,7 @@ export function useGame() {
         const engine = engineRef.current;
         if (!engine) return prev;
         const actions = prev.agents.filter(a=>a.alive).map(a=>{
+          if (a.id === 'human') return { agentId: a.id, dir: humanDirRef.current };
           const fn = stratMap.get(a.id);
           let dir: Direction = 'stay';
           try { dir = fn ? fn(prev, a.id) : 'stay'; } catch { dir = 'stay'; }
@@ -262,22 +306,7 @@ export function useGame() {
     return () => {
       if (playRef.current) clearTimeout(playRef.current);
     };
-  }, [isPlaying, speed, useLLM, getStrategyMap]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-        playPause();
-      } else if (e.key === "n" || e.key === "N") {
-        if (!isPlaying) step();
-      } else if (e.key === "r" || e.key === "R") {
-        reset();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [playPause, step, reset, isPlaying]);
+  }, [isPlaying, speed, useLLM, getStrategyMap, gameMode]);
 
   const goToTurn = useCallback((idx: number) => {
     if (!gameState) return;
@@ -322,16 +351,10 @@ export function useGame() {
             }
           }
         }
-
         setBatchProgress({ completed, total });
-
-        if (completed < total) {
-          setTimeout(runChunk, 0);
-        } else {
-          resolve();
-        }
+        if (completed < total) setTimeout(runChunk, 0);
+        else resolve();
       };
-
       runChunk();
     });
 
@@ -358,13 +381,9 @@ export function useGame() {
     setBatchProgress(null);
   }, [batchSize, getStrategyMap]);
 
-  const runBatchAndSetLeaderboard = runBatch;
-
   useEffect(() => {
-    if (!gameState) {
-      initGame();
-    }
-  }, []); // only on mount
+    if (!gameState) initGame();
+  }, []); // mount only
 
   const viewingState = gameState ? (
     historyIndex > 0 && historyIndex < gameState.history.length - 1
@@ -408,7 +427,7 @@ export function useGame() {
     playPause,
     reset,
     runBatch,
-    runBatchAndSetLeaderboard,
+    runBatchAndSetLeaderboard: runBatch,
     onRunSingle: playPause,
     onRunBatch: runBatch,
     onReset: reset,
@@ -420,6 +439,14 @@ export function useGame() {
     setUseLLM,
     llmEnabled,
     setLlmEnabled,
+    gameMode,
+    setGameMode,
+    switchMode,
+    versusPair,
+    setVersusPair,
+    humanDir,
+    setHumanDir,
+    lastHumanInput,
   };
 }
 

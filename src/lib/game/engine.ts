@@ -338,4 +338,19 @@ export const AGENT_PRESETS: AgentConfig[] = [
   { id: 'a6', name: 'MuseSpark', color: '#111111', emoji: '✨' },
 ];
 
+export const HUMAN_PRESET: AgentConfig = { id: 'human', name: 'YOU', color: '#ffff00', emoji: '😎' };
+
 export const AGENT_PRESETS_NO_LLM: AgentConfig[] = AGENT_PRESETS.slice(0, 5);
+
+export const HUMAN_VS_BOTS_PRESETS: AgentConfig[] = [
+  HUMAN_PRESET,
+  { id: 'a1', name: 'RandomRandy', color: '#ef4444', emoji: '🎲' },
+  { id: 'a2', name: 'GreedyGus', color: '#22c55e', emoji: '💰' },
+  { id: 'a3', name: 'HunterHazel', color: '#f97316', emoji: '⚔️' },
+  { id: 'a4', name: 'StrategistSam', color: '#3b82f6', emoji: '🧠' },
+];
+
+export const VERSUS_PRESETS = (id1: string, id2: string): AgentConfig[] => {
+  const all = [...AGENT_PRESETS, HUMAN_PRESET];
+  return all.filter(a => a.id === id1 || a.id === id2);
+};
