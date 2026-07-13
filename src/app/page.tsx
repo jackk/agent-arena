@@ -9,6 +9,8 @@ import Tutorial, { useTutorial } from "@/components/arcade/Tutorial";
 import SnakeBoard2D from "@/components/arcade/SnakeBoard2D";
 import Snake3DBoard from "@/components/arcade/Snake3DBoard";
 import ForestFPV from "@/components/arcade/ForestFPV";
+import PS2Forest from "@/components/arcade/PS2Forest";
+import PS2Overlay from "@/components/arcade/PS2Overlay";
 
 export default function Home() {
   const {
@@ -78,6 +80,7 @@ export default function Home() {
 
       <ApiKeyPanel />
       {tutorial.show && <Tutorial onClose={()=>tutorial.close()} />}
+      <PS2Overlay enabled={true} />
 
       {/* HEADER - compact */}
       <header className="relative z-20 shrink-0 h-12 border-b border-zinc-800 bg-black flex items-center">
@@ -88,12 +91,12 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               <h1 className="text-[15px] font-black tracking-tighter leading-none flex items-center gap-1.5">
-                <span className="text-white" style={{ textShadow: '0 0 8px #34d399' }}>SNAKE</span>
-                <span className="text-white" style={{ textShadow: '0 0 8px #22d3ee' }}>ARENA</span>
-                <span className="hidden sm:inline text-[8px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 tracking-widest ml-1">FOREST FPV • CLASSIC • 3D</span>
+                <span className="text-white" style={{ textShadow: '0 0 8px #003791' }}>SNAKE</span>
+                <span className="text-white" style={{ textShadow: '0 0 8px #00ff88' }}>ARENA</span>
+                <span className="hidden sm:inline text-[8px] font-mono px-1.5 py-0.5 rounded-[2px] bg-[#003791] border border-[#1a50c0] text-white tracking-widest ml-1">PS2 EDITION • 480i • FOREST FPV</span>
               </h1>
               <div className="hidden sm:flex items-center gap-2 text-[9px] font-mono text-zinc-500 leading-none mt-0.5">
-                <span>TURN {turn}/{maxTurns}</span><span>•</span><span>{aliveCount} ALIVE</span><span>•</span><span>{gameState.foods.length} 🍄</span><span>•</span><span className="text-emerald-400">{viewMode==='forest' ? 'BEAUTIFUL FOREST • FIRST PERSON' : "EAT TO GROW • DON'T CRASH"}</span>
+                <span>TURN {turn}/{maxTurns}</span><span>•</span><span>{aliveCount} ALIVE</span><span>•</span><span>{gameState.foods.length} 🍄</span><span>•</span><span className="text-[#8f8]">{viewMode==='forest' ? '🌲 PS2 FOREST • FIRST PERSON • BOBBING CAM' : viewMode==='3d' ? '🎮 3D VECTOR WIREFRAME' : '🟩 2D CLASSIC • PIXEL PERFECT'}</span>
               </div>
             </div>
           </div>
@@ -180,7 +183,7 @@ export default function Home() {
           <div className="flex-1 min-h-0 flex items-center justify-center">
             <div className="w-full max-w-[min(100vw-16px,60dvh,700px)] lg:max-w-[min(62vh,700px)] aspect-square">
               {viewMode==='forest' ? (
-                <ForestFPV state={gameState} />
+                <PS2Forest state={gameState} />
               ) : viewMode==='3d' ? (
                 <Snake3DBoard state={gameState} isPlaying={isPlaying} />
               ) : (
