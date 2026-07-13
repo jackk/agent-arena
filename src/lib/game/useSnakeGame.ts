@@ -12,7 +12,7 @@ export type GameMode = 'arena' | 'human' | 'versus' | 'llmBattle';
 export function useSnakeGame() {
   const [gameState, setGameState] = useState<SnakeState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(80); // FAST default - classic snake
+  const [speed, setSpeed] = useState(160); // PS2 pace - cozy, not frenetic
   const [isLLMThinking, setIsLLMThinking] = useState(false);
   const [lastLLMReason, setLastLLMReason] = useState("");
   const [useLLM, setUseLLM] = useState(false); // default OFF for speed - user can toggle ON for LLM battles
