@@ -30,6 +30,13 @@ export default function Home() {
     runBatch,
     historyIndex,
     setHistoryIndex,
+    isLLMThinking,
+    lastLLMReason,
+    useLLM,
+    setUseLLM,
+    llmEnabled,
+    setLlmEnabled,
+    initGame,
   } = useGame();
 
   const [showCoords, setShowCoords] = useState(false);
@@ -76,6 +83,17 @@ export default function Home() {
             </div>
 
             <button
+              onClick={() => {
+                const next = !llmEnabled;
+                setLlmEnabled(next);
+                setTimeout(() => initGame(undefined, next ? undefined : gameState.agents.filter(a=>a.id!=='a6').map(a=>({id:a.id,name:a.name,color:a.color,emoji:a.emoji})) as any), 100);
+              }}
+              className={`h-8 px-3 rounded-full border text-xs font-medium transition ${llmEnabled ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white' : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
+            >
+              {llmEnabled ? '✨ MuseSpark ON' : '✨ LLM OFF'}
+            </button>
+
+            <button
               onClick={() => setShowCoords(v => !v)}
               className="h-8 px-3 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 transition"
             >
@@ -101,6 +119,23 @@ export default function Home() {
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        {/* LLM status banner */}
+        {(isLLMThinking || lastLLMReason) && llmEnabled && (
+          <div className="mb-4 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-3 flex items-center gap-3 shadow-sm">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${isLLMThinking ? 'bg-violet-600 text-white animate-pulse' : 'bg-black text-white dark:bg-white dark:text-black'}`}>✨</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold tracking-tight">Muse Spark</span>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full ${isLLMThinking ? 'bg-violet-600 text-white' : 'bg-zinc-900 text-white dark:bg-white dark:text-black'}`}>{isLLMThinking ? 'thinking...' : 'reasoned'}</span>
+                <label className="ml-auto flex items-center gap-1.5 text-[11px] cursor-pointer">
+                  <input type="checkbox" checked={useLLM} onChange={e=>setUseLLM(e.target.checked)} className="rounded" /> Use LLM (slow, smart)
+                </label>
+              </div>
+              <div className="text-xs text-violet-900/70 dark:text-violet-200/70 truncate mt-0.5 font-mono">{lastLLMReason || 'Waiting for Muse Spark decision...'}</div>
+            </div>
+          </div>
+        )}
+
         {/* Top bar for turn slider if history */}
         {gameState.history.length > 1 && (
           <div className="mb-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between shadow-sm">
@@ -232,8 +267,8 @@ export default function Home() {
 
         {/* Footer */}
         <div className="mt-8 text-center text-[11px] text-zinc-400 dark:text-zinc-600 flex flex-col gap-1">
-          <div>Agent Arena • Built with Next.js + Tailwind • Engine is deterministic with seed</div>
-          <div className="font-mono">Press Space to play/pause • N to step • R to reset</div>
+          <div>Agent Arena • Built with Next.js + Tailwind • Engine deterministic • ✨ Muse Spark a6 uses Meta API (muse-spark-1.1, 2728 reasoning tokens avg)</div>
+          <div className="font-mono">Press Space to play/pause • N to step • R to reset • Toggle ✨ to enable/disable LLM agent</div>
         </div>
       </main>
     </div>

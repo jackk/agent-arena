@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { GameEngine, DEFAULT_CONFIG, AGENT_PRESETS } from "./engine";
+import { GameEngine, DEFAULT_CONFIG, AGENT_PRESETS, AGENT_PRESETS_NO_LLM } from "./engine";
 import { GameState, Direction, AgentConfig } from "./types";
 import { LeaderboardEntry } from "@/components/Leaderboard";
 import { ALL_STRATEGIES } from "../agents/strategies";
+import { fetchLLMDirection } from "../agents/llm-client";
 
 type BatchProgress = {
   completed: number;
@@ -14,24 +15,26 @@ type BatchProgress = {
 export function useGame() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(120); // ms per turn
+  const [speed, setSpeed] = useState(300);
   const [batchSize, setBatchSize] = useState(100);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(undefined);
+  const [isLLMThinking, setIsLLMThinking] = useState(false);
+  const [lastLLMReason, setLastLLMReason] = useState<string>("");
+  const [useLLM, setUseLLM] = useState(true);
+  const [llmEnabled, setLlmEnabled] = useState(true); // whether a6 is included
 
   const engineRef = useRef<GameEngine | null>(null);
-  const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Build strategy map
   const getStrategyMap = useCallback(() => {
     const map = new Map<string, (s: GameState, id: string) => Direction>();
     for (const strat of ALL_STRATEGIES) {
       map.set(strat.id, strat.decide);
     }
-    // fallback for any missing preset -> random
     for (const preset of AGENT_PRESETS) {
       if (!map.has(preset.id)) {
         map.set(preset.id, () => {
@@ -47,40 +50,78 @@ export function useGame() {
     const s = seed ?? Math.floor(Math.random() * 1_000_000);
     const engine = new GameEngine(s);
     engineRef.current = engine;
-    const presets = customPresets ?? AGENT_PRESETS;
+    let presets = customPresets ?? (llmEnabled ? AGENT_PRESETS : AGENT_PRESETS_NO_LLM);
+    // if llmEnabled false, ensure a6 not included
+    if (!llmEnabled) {
+      presets = presets.filter(p => p.id !== 'a6');
+    }
     const initial = engine.createInitialState(presets, DEFAULT_CONFIG);
     setGameState(initial);
     setHistoryIndex(0);
     setIsPlaying(false);
     setSelectedAgentId(undefined);
+    setIsLLMThinking(false);
     if (playRef.current) {
-      clearInterval(playRef.current);
+      clearTimeout(playRef.current);
       playRef.current = null;
     }
     return initial;
-  }, []);
+  }, [llmEnabled]);
 
-  const step = useCallback(() => {
-    setGameState(prev => {
-      if (!prev) return prev;
-      if (prev.isOver) return prev;
-      const engine = engineRef.current;
-      if (!engine) return prev;
-      const stratMap = getStrategyMap();
-      const actions = prev.agents.filter(a=>a.alive).map(a=>{
-        const fn = stratMap.get(a.id);
-        let dir: Direction = 'stay';
+  // Async action resolver that handles LLM
+  const getActions = useCallback(async (state: GameState): Promise<{ agentId: string; dir: Direction }[]> => {
+    const stratMap = getStrategyMap();
+    const alive = state.agents.filter(a => a.alive);
+
+    const actions: { agentId: string; dir: Direction }[] = [];
+
+    // Check if LLM agent needs to think
+    const hasLLM = alive.some(a => a.id === 'a6') && useLLM && llmEnabled;
+
+    if (hasLLM) {
+      setIsLLMThinking(true);
+    }
+
+    for (const agent of alive) {
+      if (agent.id === 'a6' && useLLM && llmEnabled) {
         try {
-          dir = fn ? fn(prev, a.id) : 'stay';
+          const llmRes = await fetchLLMDirection(state, agent.id);
+          setLastLLMReason(`${llmRes.reason} (${llmRes.latencyMs ? Math.round(llmRes.latencyMs/1000*10)/10 + 's' : ''})`);
+          actions.push({ agentId: agent.id, dir: llmRes.direction });
         } catch {
-          dir = 'stay';
+          // fallback to sync strategy
+          const fn = stratMap.get(agent.id);
+          let dir: Direction = 'stay';
+          try { dir = fn ? fn(state, agent.id) : 'stay'; } catch { dir = 'stay'; }
+          actions.push({ agentId: agent.id, dir });
         }
-        return { agentId: a.id, dir };
-      });
-      const next = engine.applyTurn(prev, actions);
-      return next;
+      } else {
+        const fn = stratMap.get(agent.id);
+        let dir: Direction = 'stay';
+        try { dir = fn ? fn(state, agent.id) : 'stay'; } catch { dir = 'stay'; }
+        actions.push({ agentId: agent.id, dir });
+      }
+    }
+
+    if (hasLLM) {
+      setIsLLMThinking(false);
+    }
+
+    return actions;
+  }, [getStrategyMap, useLLM, llmEnabled]);
+
+  const step = useCallback(async () => {
+    if (!gameState) return;
+    if (gameState.isOver) return;
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    const actions = await getActions(gameState);
+    setGameState(prev => {
+      if (!prev || prev.isOver) return prev;
+      return engine.applyTurn(prev, actions);
     });
-  }, [getStrategyMap]);
+  }, [gameState, getActions]);
 
   const play = useCallback(() => {
     if (isPlaying) return;
@@ -90,7 +131,7 @@ export function useGame() {
   const pause = useCallback(() => {
     setIsPlaying(false);
     if (playRef.current) {
-      clearInterval(playRef.current);
+      clearTimeout(playRef.current);
       playRef.current = null;
     }
   }, []);
@@ -105,56 +146,124 @@ export function useGame() {
     initGame();
   }, [initGame, pause]);
 
-  // Interval handling for auto-play
+  // Async game loop with LLM support
   useEffect(() => {
-    if (isPlaying) {
-      if (playRef.current) clearInterval(playRef.current);
-      playRef.current = setInterval(() => {
-        setGameState(prev => {
-          if (!prev) return prev;
-          if (prev.isOver) {
-            setIsPlaying(false);
-            if (playRef.current) {
-              clearInterval(playRef.current);
-              playRef.current = null;
-            }
-            return prev;
-          }
-          const engine = engineRef.current;
-          if (!engine) return prev;
-          const stratMap = getStrategyMap();
-          const actions = prev.agents.filter(a=>a.alive).map(a=>{
-            const fn = stratMap.get(a.id);
-            let dir: Direction = 'stay';
-            try { dir = fn ? fn(prev, a.id) : 'stay'; } catch { dir = 'stay'; }
-            return { agentId: a.id, dir };
-          });
-          const next = engine.applyTurn(prev, actions);
-          if (next.isOver) {
-            setIsPlaying(false);
-            if (playRef.current) {
-              clearInterval(playRef.current);
-              playRef.current = null;
-            }
-          }
-          return next;
-        });
-      }, speed);
-    } else {
+    if (!isPlaying || !gameState) {
       if (playRef.current) {
-        clearInterval(playRef.current);
+        clearTimeout(playRef.current);
         playRef.current = null;
       }
+      return;
     }
+
+    if (gameState.isOver) {
+      setIsPlaying(false);
+      return;
+    }
+
+    const loop = async () => {
+      // Don't start new loop if already thinking or paused
+      if (!engineRef.current) return;
+
+      setGameState(prev => {
+        if (!prev) return prev;
+        if (prev.isOver) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev;
+      });
+
+      // Get current state snapshot for action generation
+      // We use functional update to avoid stale closure, but need to await actions
+      // So we read from ref? Simpler: use gameState from closure and next tick will be fresh
+      const current = gameState;
+
+      if (!current || current.isOver) {
+        setIsPlaying(false);
+        return;
+      }
+
+      const actions = await getActions(current);
+
+      setGameState(prev => {
+        if (!prev) return prev;
+        if (prev.isOver) {
+          setIsPlaying(false);
+          return prev;
+        }
+        const engine = engineRef.current!;
+        const next = engine.applyTurn(prev, actions);
+        if (next.isOver) {
+          setIsPlaying(false);
+        } else {
+          // schedule next tick after speed ms (or longer if LLM was used)
+          const hasLLM = actions.some(a => a.agentId === 'a6');
+          const delay = hasLLM && useLLM ? Math.max(speed, 500) : speed;
+          playRef.current = setTimeout(loop, delay);
+        }
+        return next;
+      });
+
+      // If not over and no LLM delay already scheduled inside setGameState, schedule
+      // The above schedules inside setGameState closure - but to be safe, if not over, ensure loop continues
+      // We handle scheduling inside setGameState now, but also have fallback:
+      setTimeout(() => {
+        if (!isPlaying) return;
+        // check if playRef already set - if not, schedule
+        // This logic is handled above
+      }, 0);
+    };
+
+    // Start loop with timeout to allow UI to update
+    const hasLLMNow = gameState.agents.some(a => a.alive && a.id === 'a6') && useLLM;
+    const initialDelay = isLLMThinking ? 100 : speed;
+    playRef.current = setTimeout(loop, hasLLMNow ? 100 : initialDelay);
+
     return () => {
       if (playRef.current) {
-        clearInterval(playRef.current);
+        clearTimeout(playRef.current);
         playRef.current = null;
       }
     };
-  }, [isPlaying, speed, getStrategyMap]);
+  }, [isPlaying, speed, gameState, getActions, useLLM, isLLMThinking]);
 
-  // Keyboard shortcuts
+  // Alternative simpler interval for non-LLM mode: if useLLM false, use interval for speed
+  useEffect(() => {
+    if (useLLM) return; // LLM mode uses async loop above
+    if (!isPlaying) return;
+
+    const stratMap = getStrategyMap();
+    playRef.current = setTimeout(function tick() {
+      setGameState(prev => {
+        if (!prev) return prev;
+        if (prev.isOver) {
+          setIsPlaying(false);
+          return prev;
+        }
+        const engine = engineRef.current;
+        if (!engine) return prev;
+        const actions = prev.agents.filter(a=>a.alive).map(a=>{
+          const fn = stratMap.get(a.id);
+          let dir: Direction = 'stay';
+          try { dir = fn ? fn(prev, a.id) : 'stay'; } catch { dir = 'stay'; }
+          return { agentId: a.id, dir };
+        });
+        const next = engine.applyTurn(prev, actions);
+        if (!next.isOver) {
+          playRef.current = setTimeout(tick, speed);
+        } else {
+          setIsPlaying(false);
+        }
+        return next;
+      });
+    }, speed) as any;
+
+    return () => {
+      if (playRef.current) clearTimeout(playRef.current);
+    };
+  }, [isPlaying, speed, useLLM, getStrategyMap]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Space") {
@@ -170,62 +279,39 @@ export function useGame() {
     return () => window.removeEventListener("keydown", handler);
   }, [playPause, step, reset, isPlaying]);
 
-  // history navigation
   const goToTurn = useCallback((idx: number) => {
     if (!gameState) return;
     const hist = gameState.history;
     if (idx < 0 || idx >= hist.length) return;
-    const snap = hist[idx];
-    // Reconstruct partial state from snapshot but keep config etc
-    const reconstructed: GameState = {
-      ...gameState,
-      turn: snap.turn,
-      agents: snap.agents.map(a=>({ ...a, pos: { ...a.pos } })),
-      resources: snap.resources.map(r=>({ ...r, pos: { ...r.pos } })),
-      events: snap.events,
-      // isOver only if at last history and original isOver? Use snapshot logic: if idx == last => keep original isOver
-      isOver: idx === hist.length - 1 ? gameState.isOver : false,
-      winnerId: idx === hist.length - 1 ? gameState.winnerId : undefined,
-    };
-    // We keep history itself inside reconstructed for further navigation (use original history)
-    reconstructed.history = gameState.history;
-    // We need to set a special viewing mode? For simplicity update gameState to reconstructed but keep history reference
-    // However we lose future history if we step from middle - better to keep original history and track index
     setHistoryIndex(idx);
-    // Overwrite displayed state without losing original history? We use a separate viewing state logic: we will return derived state
-    // For now, just set gameState to reconstructed for replay display
-    // To allow resume, store original? Simpler: keep separate viewing
   }, [gameState]);
 
-  // For batch
-  const runBatch = useCallback(async (size?: number) => {
+  const runBatch = useCallback(async (size?: number, includeLLM = false) => {
     const total = size ?? batchSize;
     setIsBatchRunning(true);
     setBatchProgress({ completed: 0, total });
 
-    // run in chunks to avoid blocking UI
+    const presets = includeLLM ? AGENT_PRESETS : AGENT_PRESETS_NO_LLM;
     const stats = new Map<string, { wins: number; totalScore: number; totalKills: number; games: number }>();
 
-    for (const preset of AGENT_PRESETS) {
+    for (const preset of presets) {
       stats.set(preset.id, { wins: 0, totalScore: 0, totalKills: 0, games: 0 });
     }
 
     const stratMap = getStrategyMap();
 
-    // We run async chunk
     await new Promise<void>((resolve) => {
       let completed = 0;
-      const chunkSize = 5;
+      const chunkSize = 10;
 
       const runChunk = () => {
         for (let c = 0; c < chunkSize && completed < total; c++) {
           const seed = Math.floor(Math.random() * 1_000_000) + completed;
           const engine = new GameEngine(seed);
-          let state = engine.createInitialState(AGENT_PRESETS, DEFAULT_CONFIG);
+          let state = engine.createInitialState(presets, DEFAULT_CONFIG);
           state = engine.simulate(state, stratMap);
           completed++;
 
-          // record
           for (const ag of state.agents) {
             const s = stats.get(ag.id);
             if (s) {
@@ -240,7 +326,6 @@ export function useGame() {
         setBatchProgress({ completed, total });
 
         if (completed < total) {
-          // yield
           setTimeout(runChunk, 0);
         } else {
           resolve();
@@ -250,7 +335,7 @@ export function useGame() {
       runChunk();
     });
 
-    const entries: LeaderboardEntry[] = AGENT_PRESETS.map(preset => {
+    const entries: LeaderboardEntry[] = presets.map(preset => {
       const s = stats.get(preset.id)!;
       const games = s.games || 1;
       return {
@@ -273,20 +358,14 @@ export function useGame() {
     setBatchProgress(null);
   }, [batchSize, getStrategyMap]);
 
-  // Also function to run batch and set leaderboard - alias
   const runBatchAndSetLeaderboard = runBatch;
 
-  // Init on mount - intentionally deferred to avoid hydration mismatch
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!gameState) {
       initGame();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // only on mount
 
-  // Derived: if historyIndex is used for replay, we could compute viewing state
-  // For now, gameState includes full history; we track historyIndex but display gameState directly unless replay mode
   const viewingState = gameState ? (
     historyIndex > 0 && historyIndex < gameState.history.length - 1
       ? (() => {
@@ -297,7 +376,6 @@ export function useGame() {
           agents: snap.agents,
           resources: snap.resources,
           events: snap.events,
-          // keep isOver false during replay except last
           isOver: historyIndex === gameState.history.length - 1 ? gameState.isOver : false,
           winnerId: historyIndex === gameState.history.length - 1 ? gameState.winnerId : undefined,
         } as GameState;
@@ -331,12 +409,17 @@ export function useGame() {
     reset,
     runBatch,
     runBatchAndSetLeaderboard,
-    // aliases for GameControls compatibility
     onRunSingle: playPause,
     onRunBatch: runBatch,
     onReset: reset,
     isRunning: isPlaying,
     goToTurn,
+    isLLMThinking,
+    lastLLMReason,
+    useLLM,
+    setUseLLM,
+    llmEnabled,
+    setLlmEnabled,
   };
 }
 

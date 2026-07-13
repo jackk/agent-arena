@@ -335,4 +335,7 @@ export const AGENT_PRESETS: AgentConfig[] = [
   { id: 'a3', name: 'HunterHazel', color: '#f97316', emoji: '⚔️' },
   { id: 'a4', name: 'StrategistSam', color: '#3b82f6', emoji: '🧠' },
   { id: 'a5', name: 'AvoiderAlex', color: '#a855f7', emoji: '👻' },
+  { id: 'a6', name: 'MuseSpark', color: '#111111', emoji: '✨' },
 ];
+
+export const AGENT_PRESETS_NO_LLM: AgentConfig[] = AGENT_PRESETS.slice(0, 5);

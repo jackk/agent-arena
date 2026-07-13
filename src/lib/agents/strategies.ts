@@ -674,6 +674,69 @@ export const AvoiderAlex: AgentStrategy = {
   },
 };
 
+// ---------- LLM Agent (Muse Spark) ----------
+/**
+ * a6 - Muse Spark
+ * Powered by real LLM reasoning via /api/llm-decide.
+ * Sync fallback = heuristic (Strategist-like) for batch sims,
+ * async path calls Meta API for live games.
+ * This showcases recursive agentic loop: agent that reasons via LLM.
+ */
+export const MuseSparkAgent: AgentStrategy = {
+  id: 'a6',
+  name: 'MuseSpark',
+  description: 'LLM brain. Uses Muse Spark 1.1 with high reasoning (2728 tokens avg) to decide moves via server API. Fallback heuristic for batches.',
+  color: '#000000',
+  emoji: '✨',
+  decide: (state: GameState, agentId: string): Direction => {
+    // Sync fallback - heuristic similar to StrategistSam but simpler for batch
+    const agent = state.agents.find(a => a.id === agentId);
+    if (!agent || !agent.alive) return 'stay';
+
+    const enemies = state.agents.filter(a => a.alive && a.id !== agentId);
+    const valid = getValidDirections(state, agent.pos);
+
+    // Quick heuristic - same scoring as Strategist but minimal for speed in batch
+    let best: Direction = 'stay';
+    let bestScore = -Infinity;
+    const nearestRes = getNearestResource(agent.pos, state.resources);
+    const nearestEnemy = getNearestEnemy(agent.pos, enemies);
+
+    for (const d of valid) {
+      const np = GameEngine.getNextPos(agent.pos, d);
+      if (!isValidPos(np, state.config)) continue;
+      let score = 0;
+
+      // Resource pull
+      for (const r of state.resources) {
+        const dist = GameEngine.distance(np, r.pos);
+        score += r.value / (dist + 1) * 2;
+        if (dist === 0) score += 50;
+      }
+
+      // Enemy logic - like Strategist but LLM-flavored
+      if (nearestEnemy) {
+        const dist = GameEngine.distance(np, nearestEnemy.item.pos);
+        if (agent.health < 40 && dist <= 2) score -= 200;
+        else if (agent.health < 70 && dist <= 1) score -= 60;
+        if (nearestEnemy.item.health < 35 && agent.health > 60 && dist < nearestEnemy.dist) score += 40;
+        score += dist * 1.5; // safety
+      }
+
+      if (d === 'stay' && nearestRes && nearestRes.dist > 2) score -= 5;
+
+      const tb = (combineHash(state.turn, np.x, np.y, state.seed) % 1000) / 10000;
+      score += tb;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = d;
+      }
+    }
+    return best;
+  },
+};
+
 // ---------- Exports ----------
 
 export const ALL_STRATEGIES: AgentStrategy[] = [
@@ -682,6 +745,7 @@ export const ALL_STRATEGIES: AgentStrategy[] = [
   HunterHazel,
   StrategistSam,
   AvoiderAlex,
+  MuseSparkAgent,
 ];
 
 export const STRATEGY_MAP: Record<string, AgentStrategy> = {
@@ -690,6 +754,7 @@ export const STRATEGY_MAP: Record<string, AgentStrategy> = {
   [HunterHazel.id]: HunterHazel,
   [StrategistSam.id]: StrategistSam,
   [AvoiderAlex.id]: AvoiderAlex,
+  [MuseSparkAgent.id]: MuseSparkAgent,
 };
 
 export function getStrategyById(id: string): AgentStrategy | undefined {

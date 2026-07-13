@@ -1,0 +1,78 @@
+{
+  "results": [
+    {
+      "id": "a4",
+      "name": "StrategistSam",
+      "emoji": "🧠",
+      "color": "#3b82f6",
+      "wins": 347,
+      "winRate": 34.699999999999996,
+      "avgScore": 175.8,
+      "totalKills": 477,
+      "avgKills": 0.477,
+      "survivalRate": 78,
+      "avgTurns": 96.443,
+      "games": 1000
+    },
+    {
+      "id": "a2",
+      "name": "GreedyGus",
+      "emoji": "💰",
+      "color": "#22c55e",
+      "wins": 328,
+      "winRate": 32.800000000000004,
+      "avgScore": 164.665,
+      "totalKills": 421,
+      "avgKills": 0.421,
+      "survivalRate": 56.49999999999999,
+      "avgTurns": 96.443,
+      "games": 1000
+    },
+    {
+      "id": "a5",
+      "name": "AvoiderAlex",
+      "emoji": "👻",
+      "color": "#a855f7",
+      "wins": 298,
+      "winRate": 29.799999999999997,
+      "avgScore": 151.19,
+      "totalKills": 140,
+      "avgKills": 0.14,
+      "survivalRate": 89.9,
+      "avgTurns": 96.443,
+      "games": 1000
+    },
+    {
+      "id": "a1",
+      "name": "RandomRandy",
+      "emoji": "🎲",
+      "color": "#ef4444",
+      "wins": 20,
+      "winRate": 2,
+      "avgScore": 39.935,
+      "totalKills": 450,
+      "avgKills": 0.45,
+      "survivalRate": 45.7,
+      "avgTurns": 96.443,
+      "games": 1000
+    },
+    {
+      "id": "a3",
+      "name": "HunterHazel",
+      "emoji": "⚔️",
+      "color": "#f97316",
+      "wins": 3,
+      "winRate": 0.3,
+      "avgScore": 42.24,
+      "totalKills": 711,
+      "avgKills": 0.711,
+      "survivalRate": 17.299999999999997,
+      "avgTurns": 96.443,
+      "games": 1000
+    }
+  ],
+  "meta": {
+    "count": 1000,
+    "elapsed": 1.115
+  }
+}
