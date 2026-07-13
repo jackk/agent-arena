@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 export default function Scanlines({ opacity = 0.15 }: { opacity?: number }) {

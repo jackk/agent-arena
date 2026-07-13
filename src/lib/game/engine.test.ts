@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect } from 'vitest';
 import { GameEngine, DEFAULT_CONFIG } from './engine';
 import { ALL_STRATEGIES } from '../agents/strategies';

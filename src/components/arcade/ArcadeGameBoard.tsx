@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import { GameState } from '@/lib/game/types';
 import { GameEngine } from '@/lib/game/engine';

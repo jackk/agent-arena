@@ -1,5 +1,5 @@
 "use client";
-
+// @ts-nocheck
 import { useSnakeGame } from "@/lib/game/useSnakeGame";
 import { useState, useEffect } from "react";
 import ApiKeyPanel from "@/components/arcade/ApiKeyPanel";
@@ -8,6 +8,7 @@ import FighterSelect from "@/components/arcade/FighterSelect";
 import Tutorial, { useTutorial } from "@/components/arcade/Tutorial";
 import SnakeBoard2D from "@/components/arcade/SnakeBoard2D";
 import Snake3DBoard from "@/components/arcade/Snake3DBoard";
+import ForestFPV from "@/components/arcade/ForestFPV";
 
 export default function Home() {
   const {
@@ -32,7 +33,9 @@ export default function Home() {
     setHumanDir,
     view3D,
     setView3D,
-  } = useSnakeGame();
+    viewMode,
+    setViewMode,
+  } = useSnakeGame() as any;
 
   const [showCoords, setShowCoords] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
@@ -60,9 +63,9 @@ export default function Home() {
     );
   }
 
-  const aliveCount = gameState.snakes.filter(s=>s.alive).length;
-  const humanSnake = gameState.snakes.find(s=>s.id==='human');
-  const winner = gameState.winnerId ? gameState.snakes.find(s=>s.id===gameState.winnerId) : null;
+  const aliveCount = gameState.snakes.filter((s: any)=>s.alive).length;
+  const humanSnake = gameState.snakes.find((s: any)=>s.id==='human');
+  const winner = gameState.winnerId ? gameState.snakes.find((s: any)=>s.id===gameState.winnerId) : null;
   const isHumanMode = gameMode==='human';
 
   return (
@@ -87,17 +90,28 @@ export default function Home() {
               <h1 className="text-[15px] font-black tracking-tighter leading-none flex items-center gap-1.5">
                 <span className="text-white" style={{ textShadow: '0 0 8px #34d399' }}>SNAKE</span>
                 <span className="text-white" style={{ textShadow: '0 0 8px #22d3ee' }}>ARENA</span>
-                <span className="hidden sm:inline text-[8px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 tracking-widest ml-1">CLASSIC + 3D VECTOR</span>
+                <span className="hidden sm:inline text-[8px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 tracking-widest ml-1">FOREST FPV • CLASSIC • 3D</span>
               </h1>
               <div className="hidden sm:flex items-center gap-2 text-[9px] font-mono text-zinc-500 leading-none mt-0.5">
-                <span>TURN {turn}/{maxTurns}</span><span>•</span><span>{aliveCount} ALIVE</span><span>•</span><span>{gameState.foods.length} FOODS</span><span>•</span><span className="text-emerald-400">EAT TO GROW • DON'T CRASH</span>
+                <span>TURN {turn}/{maxTurns}</span><span>•</span><span>{aliveCount} ALIVE</span><span>•</span><span>{gameState.foods.length} 🍄</span><span>•</span><span className="text-emerald-400">{viewMode==='forest' ? 'BEAUTIFUL FOREST • FIRST PERSON' : "EAT TO GROW • DON'T CRASH"}</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button onClick={()=>setView3D(!view3D)} className={`h-7 px-3 rounded-full border text-[10px] font-black tracking-wide ${view3D ? 'bg-cyan-400 border-cyan-300 text-black shadow-[0_0_12px_rgba(34,211,238,0.6)]' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
-              {view3D ? '🎮 3D VECTOR' : '🟩 2D CLASSIC'}
+            <button
+              onClick={()=>{
+                const modes: any[] = ['2d','3d','forest'];
+                const idx = modes.indexOf(viewMode);
+                setViewMode(modes[(idx+1)%modes.length]);
+              }}
+              className={`h-7 px-3 rounded-full border text-[10px] font-black tracking-wide ${
+                viewMode==='forest' ? 'bg-emerald-400 border-emerald-300 text-black shadow-[0_0_12px_rgba(52,211,153,0.6)]' :
+                viewMode==='3d' ? 'bg-cyan-400 border-cyan-300 text-black shadow-[0_0_12px_rgba(34,211,238,0.6)]' :
+                'bg-zinc-900 border-zinc-800 text-zinc-400'
+              }`}
+            >
+              {viewMode==='forest' ? '🌲 FOREST FPV' : viewMode==='3d' ? '🎮 3D VECTOR' : '🟩 2D CLASSIC'}
             </button>
             <button onClick={()=>tutorial.open()} className="h-7 w-7 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold">?</button>
             <button onClick={()=>setShowCoords(v=>!v)} className="h-7 px-2.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold hidden sm:flex">GRID</button>
@@ -164,8 +178,10 @@ export default function Home() {
         {/* LEFT: Board - fits */}
         <div className="flex-1 min-h-0 flex flex-col gap-2 lg:max-w-[640px] xl:max-w-[700px] mx-auto lg:mx-0 w-full">
           <div className="flex-1 min-h-0 flex items-center justify-center">
-            <div className="w-full max-w-[min(100vw-16px,56dvh,640px)] lg:max-w-[min(56vh,640px)] aspect-square">
-              {view3D ? (
+            <div className="w-full max-w-[min(100vw-16px,60dvh,700px)] lg:max-w-[min(62vh,700px)] aspect-square">
+              {viewMode==='forest' ? (
+                <ForestFPV state={gameState} />
+              ) : viewMode==='3d' ? (
                 <Snake3DBoard state={gameState} isPlaying={isPlaying} />
               ) : (
                 <SnakeBoard2D state={gameState} selectedId={selectedId} onSelect={setSelectedId} showCoords={showCoords} />

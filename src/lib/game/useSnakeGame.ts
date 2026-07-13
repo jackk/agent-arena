@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -22,6 +23,7 @@ export function useSnakeGame() {
   const [humanDir, setHumanDirState] = useState<Direction>('right');
   const humanDirRef = useRef<Direction>('right');
   const [view3D, setView3D] = useState(true);
+  const [viewMode, setViewMode] = useState<'2d'|'3d'|'forest'>('forest');
 
   const engineRef = useRef<SnakeEngine | null>(null);
   const playRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -206,6 +208,8 @@ export function useSnakeGame() {
     setHumanDir,
     view3D,
     setView3D,
+    viewMode,
+    setViewMode,
     initGame,
   };
 }

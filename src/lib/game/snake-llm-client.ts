@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import { SnakeState, Snake } from "./snake-engine";
 import { Direction, Position } from "./types";

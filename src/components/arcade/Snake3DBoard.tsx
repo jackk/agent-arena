@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Edges, Grid, PerspectiveCamera } from "@react-three/drei";

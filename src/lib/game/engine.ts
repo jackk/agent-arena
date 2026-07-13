@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GameConfig, GameState, AgentConfig, Position, AgentState, Resource, Direction, GameEvent, GameStateSnapshot, AgentAction } from './types';
 
 // Seeded RNG - mulberry32

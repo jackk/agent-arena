@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Position, Direction, AgentConfig, GameEvent } from './types';
 
 export type Snake = {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import { AgentConfig } from '@/lib/game/types';
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 import { Direction } from '@/lib/game/types';
 

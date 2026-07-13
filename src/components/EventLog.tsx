@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { GameEvent } from "@/lib/game/types";

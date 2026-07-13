@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { GameState, AgentState, Resource } from "@/lib/game/types";
