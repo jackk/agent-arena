@@ -5,23 +5,24 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { SnakeEngine, SNAKE_DEFAULT_CONFIG, SNAKE_AGENT_PRESETS, SNAKE_AGENT_PRESETS_NO_LLM, SNAKE_HUMAN_PRESET, SNAKE_HUMAN_VS_BOTS, SnakeState, SnakeConfig, SnakeAction } from "./snake-engine";
 import { AgentConfig, Direction } from "./types";
 import { SNAKE_ALL_STRATEGIES } from "./snake-strategies";
-import { fetchSnakeLLMDirection, LLMConfig } from "./snake-llm-client";
+import { fetchSnakeLLMDirection } from "./snake-llm-client";
 
-type BatchProgress = { completed: number; total: number };
 export type GameMode = 'arena' | 'human' | 'versus' | 'llmBattle';
 
 export function useSnakeGame() {
   const [gameState, setGameState] = useState<SnakeState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(100);
+  const [speed, setSpeed] = useState(80); // FAST default - classic snake
   const [isLLMThinking, setIsLLMThinking] = useState(false);
   const [lastLLMReason, setLastLLMReason] = useState("");
-  const [useLLM, setUseLLM] = useState(true);
+  const [useLLM, setUseLLM] = useState(false); // default OFF for speed - user can toggle ON for LLM battles
   const [llmEnabled, setLlmEnabled] = useState(true);
   const [gameMode, setGameMode] = useState<GameMode>('arena');
   const [versusPair, setVersusPair] = useState<[string,string]>(['a4','a6']);
   const [humanDir, setHumanDirState] = useState<Direction>('right');
   const humanDirRef = useRef<Direction>('right');
+  const llmDirRef = useRef<Direction>('right');
+  const llmPendingRef = useRef(false);
   const [view3D, setView3D] = useState(true);
   const [viewMode, setViewMode] = useState<'2d'|'3d'|'forest'>('forest');
 
@@ -33,7 +34,6 @@ export function useSnakeGame() {
     for (const strat of SNAKE_ALL_STRATEGIES) {
       map.set(strat.id, strat.decide);
     }
-    // human fallback
     map.set('human', () => humanDirRef.current);
     return map;
   }, []);
@@ -65,9 +65,19 @@ export function useSnakeGame() {
     setGameState(initial);
     setIsPlaying(false);
     setIsLLMThinking(false);
+    llmPendingRef.current = false;
+    llmDirRef.current = 'right';
     humanDirRef.current = 'right';
     setHumanDirState('right');
     if (playRef.current) { clearTimeout(playRef.current); playRef.current=null; }
+    // In LLM battle mode, auto-enable LLM thinking, in arena/human disable for speed
+    if (actualMode==='llmBattle') {
+      setUseLLM(true);
+    } else if (actualMode==='arena' || actualMode==='human') {
+      // Keep fast by default, user can toggle ON if they want slow LLM
+      // Don't force-disable, respect user choice but default is OFF
+      if (actualMode==='arena') setUseLLM(false);
+    }
     return initial;
   }, [gameMode, llmEnabled, getPresetsForMode]);
 
@@ -76,27 +86,56 @@ export function useSnakeGame() {
     setHumanDirState(dir);
   }, []);
 
-  const getActions = useCallback(async (state: SnakeState): Promise<SnakeAction[]> => {
+  // NON-BLOCKING LLM - game never waits for inference
+  const triggerLLMBackground = useCallback((state: SnakeState, snakeId: string) => {
+    if (llmPendingRef.current) return; // already thinking
+    const hasKey = typeof window !== 'undefined' && (localStorage.getItem('agent-arena-api-key') || localStorage.getItem('agent-arena-llm-config'));
+    if (!hasKey) {
+      // No key, use heuristic and show hint
+      setLastLLMReason('No API key - using heuristic fallback (add key in 🔑 panel for real LLM reasoning)');
+      return;
+    }
+    llmPendingRef.current = true;
+    setIsLLMThinking(true);
+    
+    fetchSnakeLLMDirection(state, snakeId)
+      .then(res => {
+        llmDirRef.current = res.direction;
+        setLastLLMReason(`${res.reason} (${res.latencyMs ? (res.latencyMs/1000).toFixed(1)+'s' : ''}) - will use next turn`);
+      })
+      .catch(() => {
+        setLastLLMReason('LLM failed, using heuristic');
+      })
+      .finally(() => {
+        llmPendingRef.current = false;
+        setIsLLMThinking(false);
+      });
+  }, []);
+
+  const getActions = useCallback((state: SnakeState): SnakeAction[] => {
     const stratMap = getStrategyMap();
     const alive = state.snakes.filter(s=>s.alive);
     const actions: SnakeAction[] = [];
-    const hasLLM = alive.some(s=>s.id==='a6') && useLLM && llmEnabled;
-    if (hasLLM) setIsLLMThinking(true);
 
     for (const snake of alive) {
       if (snake.id==='human') {
         actions.push({ snakeId: snake.id, dir: humanDirRef.current });
       } else if (snake.id==='a6' && useLLM && llmEnabled) {
-        try {
-          const res = await fetchSnakeLLMDirection(state, snake.id);
-          setLastLLMReason(`${res.reason} (${res.latencyMs ? Math.round(res.latencyMs/10)/100 + 's' : ''})`);
-          actions.push({ snakeId: snake.id, dir: res.direction });
-        } catch {
-          const fn = stratMap.get(snake.id);
-          let dir: Direction = snake.dir;
-          try { dir = fn ? fn(state, snake.id) : snake.dir; } catch {}
-          actions.push({ snakeId: snake.id, dir });
+        // NON-BLOCKING: Use last LLM dir if available, plus trigger new inference in background
+        const fn = stratMap.get(snake.id);
+        let heuristicDir: Direction = snake.dir;
+        try { heuristicDir = fn ? fn(state, snake.id) : snake.dir; } catch {}
+
+        // If we have a cached LLM dir from previous inference, use it, else heuristic
+        const dirToUse = llmDirRef.current && !llmPendingRef.current ? llmDirRef.current : heuristicDir;
+
+        // Trigger background LLM for NEXT turn (don't await)
+        if (!llmPendingRef.current) {
+          // Don't block - fire and forget, will update ref for next turn
+          triggerLLMBackground(state, snake.id);
         }
+
+        actions.push({ snakeId: snake.id, dir: dirToUse });
       } else {
         const fn = stratMap.get(snake.id);
         let dir: Direction = snake.dir;
@@ -104,15 +143,14 @@ export function useSnakeGame() {
         actions.push({ snakeId: snake.id, dir });
       }
     }
-    if (hasLLM) setIsLLMThinking(false);
     return actions;
-  }, [getStrategyMap, useLLM, llmEnabled]);
+  }, [getStrategyMap, useLLM, llmEnabled, triggerLLMBackground]);
 
-  const step = useCallback(async () => {
+  const step = useCallback(() => {
     if (!gameState || gameState.isOver) return;
     const engine = engineRef.current;
     if (!engine) return;
-    const actions = await getActions(gameState);
+    const actions = getActions(gameState);
     setGameState(prev => prev ? engine.applyTurn(prev, actions) : prev);
   }, [gameState, getActions]);
 
@@ -150,38 +188,41 @@ export function useSnakeGame() {
     return () => window.removeEventListener('keydown', handler);
   }, [gameMode, setHumanDir, playPause, initGame]);
 
-  // Main loop
+  useEffect(() => { if (!gameState) initGame(); }, []);
+
+  // SINGLE FAST GAME LOOP - never blocks on LLM
   useEffect(() => {
-    if (!isPlaying || !gameState) {
-      if (playRef.current) { clearTimeout(playRef.current); playRef.current=null; }
+    if (!isPlaying) {
+      if (playRef.current) clearTimeout(playRef.current);
       return;
     }
-    if (gameState.isOver) { setIsPlaying(false); return; }
+    if (!gameState || gameState.isOver) {
+      setIsPlaying(false);
+      return;
+    }
 
-    const loop = async () => {
-      if (!engineRef.current) return;
-      const current = gameState;
-      if (!current || current.isOver) { setIsPlaying(false); return; }
-      const actions = await getActions(current);
+    const loop = () => {
       setGameState(prev => {
-        if (!prev || prev.isOver) { setIsPlaying(false); return prev; }
-        const next = engineRef.current!.applyTurn(prev, actions);
-        if (next.isOver) setIsPlaying(false);
-        else {
-          const hasLLM = actions.some(a=>a.snakeId==='a6');
-          // Only slow down if actually waiting for real LLM API (has key), not fallback heuristic
-          const hasRealLLM = hasLLM && useLLM && typeof window !== 'undefined' && !!localStorage.getItem('agent-arena-api-key');
-          const delay = hasRealLLM ? Math.max(speed, 600) : speed;
-          playRef.current = setTimeout(loop, delay);
+        if (!prev || prev.isOver) {
+          setIsPlaying(false);
+          return prev;
         }
-        return next;
+        const eng = engineRef.current;
+        if (!eng) return prev;
+        const acts = getActions(prev);
+        const nxt = eng.applyTurn(prev, acts);
+        if (nxt.isOver) {
+          setIsPlaying(false);
+        } else {
+          playRef.current = setTimeout(loop, speed);
+        }
+        return nxt;
       });
     };
+
     playRef.current = setTimeout(loop, speed);
     return () => { if (playRef.current) clearTimeout(playRef.current); };
-  }, [isPlaying, speed, gameState, getActions, useLLM]);
-
-  useEffect(() => { if (!gameState) initGame(); }, []);
+  }, [isPlaying, speed, gameState, getActions]);
 
   return {
     gameState,
